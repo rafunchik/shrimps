@@ -41,14 +41,16 @@ if not os.path.isfile('alldata-id.txt'):
 
     abstracts = [Abstract(x) for x in text.split("\r\n\r\n")]
     with open('/Users/rcastro/dev/alldata-id.txt', 'w', encoding='utf8') as f:
-        for idx, line in enumerate([normalize_text(x.text) for x in abstracts]):
+        # for idx, line in enumerate([normalize_text(x.text) for x in abstracts]):
+        #     # num_line = "_*{0} {1}\n".format(idx, line)
+        #     f.write(line+'\n')
+        for article in abstracts:
             # num_line = "_*{0} {1}\n".format(idx, line)
-            TaggedDocument(words=[u'broke', u'within', u'weeks'], tags=['TRAIN_NEG_1'])
-            f.write(line+'\n')
+            TaggedDocument(words=[article.text.split()], tags=article.keywords)
+            # f.write(line+'\n')
 
 
-
-from gensim.models.doc2vec import TaggedLineDocument
+from gensim.models.doc2vec import TaggedLineDocument, TaggedDocument
 
 sentences  = TaggedLineDocument('alldata-id.txt')
 

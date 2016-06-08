@@ -1,9 +1,11 @@
 # coding=utf-8
 import re
+from gensim import corpora
+from abstract import Abstract
 
 __author__ = 'rcastro'
 
-from gensim.models import Word2Vec
+from gensim.models import Word2Vec, LdaModel
 from sklearn.feature_extraction.text import CountVectorizer
 
 import nltk
@@ -19,27 +21,27 @@ import numpy as np
 clean_train_reviews = []
 #train["reviews"]
 
-def review_to_words( raw_review ):
-    # Function to convert a raw review to a string of words
-    # The input is a single string (a raw movie review), and
-    # the output is a single string (a preprocessed movie review)
-    #
-    # 2. Remove non-letters
-    #letters_only = re.sub("[^a-zA-Z]", " ", raw_review)
-    #
-    # 3. Convert to lower case, split into individual words
-    words = raw_review.lower().split()
-    #
-    # 4. In Python, searching a set is much faster than searching
-    #   a list, so convert the stop words to a set
-    stops = set(stopwords.words("english"))
-    #
-    # 5. Remove stop words
-    meaningful_words = [w for w in words if not w in stops]
-    #
-    # 6. Join the words back into one string separated by space,
-    # and return the result.
-    return( " ".join( meaningful_words ))
+# def review_to_words( raw_review ):
+#     # Function to convert a raw review to a string of words
+#     # The input is a single string (a raw movie review), and
+#     # the output is a single string (a preprocessed movie review)
+#     #
+#     # 2. Remove non-letters
+#     #letters_only = re.sub("[^a-zA-Z]", " ", raw_review)
+#     #
+#     # 3. Convert to lower case, split into individual words
+#     words = raw_review.lower().split()
+#     #
+#     # 4. In Python, searching a set is much faster than searching
+#     #   a list, so convert the stop words to a set
+#     stops = set(stopwords.words("english"))
+#     #
+#     # 5. Remove stop words
+#     meaningful_words = [w for w in words if not w in stops]
+#     #
+#     # 6. Join the words back into one string separated by space,
+#     # and return the result.
+#     return( " ".join( meaningful_words ))
 
 
 print "get the abstracts"
@@ -58,13 +60,14 @@ abstracts = [Abstract(x) for x in text.split("\r\n\r\n")]
 print "Cleaning and parsing the training set movie reviews...\n"
 clean_train_reviews = []
 num_reviews = len(abstracts)
-clean_train_reviews = [x.title for x in abstracts]
+clean_train_reviews = [x.text for x in abstracts]
 #
 # for i in xrange( 0, num_reviews ):
 #     # If the index is evenly divisible by 1000, print a message
 #     if( (i+1)%1000 == 0 ):
 #         print "Review %d of %d\n" % ( i+1, num_reviews )
 #     clean_train_reviews.append( texts[i]) #review_to_words( texts[i] ))
+
 
 
 # Initialize the "CountVectorizer" object, which is scikit-learn's
@@ -91,7 +94,7 @@ dist = np.sum(train_data_features, axis=0)
 
 # Take a look at the words in the vocabulary
 vocab = vectorizer.get_feature_names()
-print vocab
+
 
 # For each, print the vocabulary word and the number of times it
 # appears in the training set
@@ -99,11 +102,11 @@ print vocab
 #     print count, tag
 
 
-print "Training the random forest..."
-from sklearn.ensemble import RandomForestClassifier
+#print "Training the random forest..."
+#from sklearn.ensemble import RandomForestClassifier
 
 # Initialize a Random Forest classifier with 100 trees
-forest = RandomForestClassifier(n_estimators = 100)
+# forest = RandomForestClassifier(n_estimators = 100)
 
 # Fit the forest to the training set, using the bag of words as
 # features and the sentiment labels as the response variable
@@ -113,5 +116,91 @@ forest = RandomForestClassifier(n_estimators = 100)
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
-tfidf_vectorizer = TfidfVectorizer()
-tfidf_vectorizer.fit(clean_train_reviews)
+tfidf_vectorizer = TfidfVectorizer(analyzer = "word",   \
+                             tokenizer = None,    \
+                             preprocessor = None, \
+                             stop_words = 'english',   \
+                             lowercase=True, \
+                             ngram_range=(1, 2), \
+                             max_features = 155000)
+tfidf_matrix = tfidf_vectorizer.fit_transform(clean_train_reviews)
+terms = tfidf_vectorizer.get_feature_names()
+#dictionary = corpora.Dictionary(clean_train_reviews)
+
+
+from sklearn.metrics.pairwise import cosine_similarity
+
+dist = 1 - cosine_similarity(tfidf_matrix)
+print
+print
+
+from sklearn.cluster import KMeans
+#
+num_clusters = 5
+#
+km = KMeans(n_clusters=num_clusters)
+
+km.fit(tfidf_matrix)
+
+clusters = km.labels_.tolist()
+
+from sklearn.externals import joblib
+
+#uncomment the below to save your model
+#since I've already run my model I am loading from the pickle
+
+joblib.dump(km,  'doc_cluster.pkl')
+
+km = joblib.load('doc_cluster.pkl')
+clusters = km.labels_.tolist()
+
+import pandas as pd
+
+films = { 'title': [x.title for x in abstracts], 'cluster': clusters}
+
+frame = pd.DataFrame(films, index = [clusters] , columns = ['title', 'cluster'])
+
+print frame['cluster'].value_counts()
+
+
+# from __future__ import print_function
+
+print("Top terms per cluster:")
+#sort cluster centers by proximity to centroid
+order_centroids = km.cluster_centers_.argsort()[:, ::-1]
+
+for i in range(num_clusters):
+    print "Cluster %d words:" % i
+
+    for ind in order_centroids[i, :6]: #replace 6 with n words per cluster
+        print ' %s' % terms[ind].encode('utf-8', 'ignore')
+
+
+    print "Cluster %d titles:" % i
+    for title in frame.ix[i]['title'].values.tolist()[:5]:
+        print ' %s,' % title
+
+
+
+
+#create a Gensim dictionary from the texts
+dictionary = corpora.Dictionary(terms)
+
+#remove extremes (similar to the min/max df step used when creating the tf-idf matrix)
+dictionary.filter_extremes(no_below=1, no_above=0.8)
+
+#convert the dictionary to a bag of words corpus for reference
+corpus = [dictionary.doc2bow(text) for text in terms]
+
+lda = LdaModel(corpus, num_topics=5,
+                            id2word=dictionary,
+                            update_every=5,
+                            chunksize=10000,
+                            passes=100)
+lda.show_topics()
+topics_matrix = lda.show_topics(formatted=False, num_words=20)
+topics_matrix = np.array(topics_matrix)
+
+topic_words = topics_matrix[:,:,1]
+for i in topic_words:
+    print([str(word) for word in i])

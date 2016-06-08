@@ -6,7 +6,7 @@ import re
 title_ptn = re.compile('title: (.+)[\r\n]')
 keywords_ptn = re.compile('keywords: (.+):')
 abstract_ptn = re.compile('abstract: (.+)[\r\n]')
-
+number_token = re.compile('[\d]+[^\s]*')
 
 
 class Abstract(object):
@@ -57,4 +57,6 @@ class Abstract(object):
             self.text += ' ' + re.findall(abstract_ptn, abstract_text)[0].strip()
         except:
             pass
+        if self.text:
+            self.text = re.sub(r'[\d]+[^\s]*', ' ', self.text)
         self.references = ''
