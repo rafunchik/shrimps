@@ -5,7 +5,7 @@ from abstract import Abstract
 
 __author__ = 'rcastro'
 
-from gensim.models import Word2Vec, LdaModel
+from gensim.models import Word2Vec, LdaModel, LsiModel
 from sklearn.feature_extraction.text import CountVectorizer
 
 import nltk
@@ -61,14 +61,11 @@ print "Cleaning and parsing the training set movie reviews...\n"
 clean_train_reviews = []
 num_reviews = len(abstracts)
 clean_train_reviews = [x.text for x in abstracts]
-#
-# for i in xrange( 0, num_reviews ):
-#     # If the index is evenly divisible by 1000, print a message
-#     if( (i+1)%1000 == 0 ):
-#         print "Review %d of %d\n" % ( i+1, num_reviews )
-#     clean_train_reviews.append( texts[i]) #review_to_words( texts[i] ))
+stops = set(stopwords.words("english"))
 
-
+def get_tokens_list(my_text):
+    words = [w for w in nltk.word_tokenize(my_text) if not w in stops]
+    return words + [' '.join(x) for x in nltk.bigrams(words)]
 
 # Initialize the "CountVectorizer" object, which is scikit-learn's
 # bag of words tool.
@@ -79,6 +76,21 @@ vectorizer = CountVectorizer(analyzer = "word",   \
                              lowercase=True, \
                              ngram_range=(1, 2), \
                              max_features = 155000)
+analyzer = vectorizer.build_analyzer()
+
+review_lists = [analyzer(w) for w in clean_train_reviews]
+
+
+
+#
+# for i in xrange( 0, num_reviews ):
+#     # If the index is evenly divisible by 1000, print a message
+#     if( (i+1)%1000 == 0 ):
+#         print "Review %d of %d\n" % ( i+1, num_reviews )
+#     clean_train_reviews.append( texts[i]) #review_to_words( texts[i] ))
+
+
+
 
 # fit_transform() does two functions: First, it fits the model
 # and learns the vocabulary; second, it transforms our training data
@@ -165,42 +177,51 @@ print frame['cluster'].value_counts()
 
 # from __future__ import print_function
 
-print("Top terms per cluster:")
-#sort cluster centers by proximity to centroid
-order_centroids = km.cluster_centers_.argsort()[:, ::-1]
-
-for i in range(num_clusters):
-    print "Cluster %d words:" % i
-
-    for ind in order_centroids[i, :6]: #replace 6 with n words per cluster
-        print ' %s' % terms[ind].encode('utf-8', 'ignore')
-
-
-    print "Cluster %d titles:" % i
-    for title in frame.ix[i]['title'].values.tolist()[:5]:
-        print ' %s,' % title
+# print("Top terms per cluster:")
+# #sort cluster centers by proximity to centroid
+# order_centroids = km.cluster_centers_.argsort()[:, ::-1]
+#
+# for i in range(num_clusters):
+#     print "Cluster %d words:" % i
+#
+#     for ind in order_centroids[i, :6]: #replace 6 with n words per cluster
+#         print ' %s' % terms[ind].encode('utf-8', 'ignore')
+#
+#
+#     print "Cluster %d titles:" % i
+#     for title in frame.ix[i]['title'].values.tolist()[:5]:
+#         print ' %s,' % title
 
 
 
 
 #create a Gensim dictionary from the texts
-dictionary = corpora.Dictionary(terms)
+dictionary = corpora.Dictionary(review_lists)
 
 #remove extremes (similar to the min/max df step used when creating the tf-idf matrix)
 dictionary.filter_extremes(no_below=1, no_above=0.8)
+#
+# #convert the dictionary to a bag of words corpus for reference
+# corpus = [dictionary.doc2bow(review) for review in review_lists]
+# corpora.MmCorpus.serialize('/tmp/deerwester.mm', corpus)
 
-#convert the dictionary to a bag of words corpus for reference
-corpus = [dictionary.doc2bow(text) for text in terms]
+corpus = corpora.MmCorpus('/tmp/deerwester.mm')
+
+lsi = LsiModel(corpus, id2word=dictionary, num_topics=5) # initialize an LSI transformation
+lsi.print_topics(5)
+
+lsi.save('/tmp/model.lsi') # same for tfidf, lda, ...
+lsi = LsiModel.load('/tmp/model.lsi')
 
 lda = LdaModel(corpus, num_topics=5,
                             id2word=dictionary,
                             update_every=5,
                             chunksize=10000,
-                            passes=100)
+                            passes=10)
 lda.show_topics()
 topics_matrix = lda.show_topics(formatted=False, num_words=20)
-topics_matrix = np.array(topics_matrix)
-
-topic_words = topics_matrix[:,:,1]
-for i in topic_words:
-    print([str(word) for word in i])
+# topics_matrix = np.array(topics_matrix)
+#
+# topic_words = topics_matrix[:,:,1]
+# for i in topic_words:
+#     print([str(word) for word in i])
