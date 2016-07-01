@@ -149,12 +149,10 @@ terms = vectorizer.get_feature_names()  # todos los terminos (unigramas y bigram
 from sklearn.cluster import KMeans
 from sklearn.externals import joblib
 
-cluster_model_file = 'doc_cluster.pkl'
-num_clusters = 5  # numero predefinido de clusters hay que probar en un rango
-if not os.path.isfile(cluster_model_file):
+num_clusters = 5  # numero predefinido de clusters, hay que probar en un rango
+if not os.path.isfile('doc_cluster.pkl'):  # carga del disco si lo corriste ya una vez, comentalo si lo quieres reescribir
     km = KMeans(n_clusters=num_clusters)  # kmeans usando cosine distance, agrupa los abstracts similares
     km.fit(tfidf_matrix)
-    # uncomment the below to save your model
     joblib.dump(km, 'doc_cluster.pkl')
 else:
     km = joblib.load('doc_cluster.pkl')
@@ -190,7 +188,7 @@ for i in range(num_clusters):
 dictionary = corpora.Dictionary(abstract_vectors)
 
 # remove extremes (similar to the min/max df step used when creating the tf-idf matrix)
-dictionary.filter_extremes(no_below=1, no_above=0.8)
+dictionary.filter_extremes(no_below=1, no_above=0.8)  # filtra los terminos mas comunes
 #
 # #convert the dictionary to a bag of words corpus for reference
 corpus = [dictionary.doc2bow(review) for review in abstract_vectors]
