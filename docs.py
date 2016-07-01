@@ -1,6 +1,7 @@
 # coding=utf-8
 from __future__ import print_function
 import codecs
+import os
 import re
 from gensim import corpora, matutils
 from abstract import Abstract
@@ -20,49 +21,27 @@ import numpy as np
 # print(model.most_similar('Crayfish', topn=5))
 
 import logging
+
 logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s', level=logging.INFO)
 
-# Initialize an empty list to hold the clean reviews
-clean_train_reviews = []
-# train["reviews"]
-
-# def review_to_words( raw_review ):
-#     # Function to convert a raw review to a string of words
-#     # The input is a single string (a raw movie review), and
-#     # the output is a single string (a preprocessed movie review)
-#     #
-#     # 2. Remove non-letters
-#     #letters_only = re.sub("[^a-zA-Z]", " ", raw_review)
-#     #
-#     # 3. Convert to lower case, split into individual words
-#     words = raw_review.lower().split()
-#     #
-#     # 4. In Python, searching a set is much faster than searching
-#     #   a list, so convert the stop words to a set
-#     stops = set(stopwords.words("english"))
-#     #
-#     # 5. Remove stop words
-#     meaningful_words = [w for w in words if not w in stops]
-#     #
-#     # 6. Join the words back into one string separated by space,
-#     # and return the result.
-#     return( " ".join( meaningful_words ))
-
-
-print ("get the abstracts")
+print("get the abstracts")
 text = ''
-try:
-    with codecs.open('/Users/rcastro/dev/abstracts.txt', 'r', encoding='utf8') as abstracts_file:
-        text = abstracts_file.read().strip()
-except IOError as e:
-    print ('Operation failed: %s' % e.strerror)
+clean_abstracts_filename = 'clean_abstracts.txt'
+if not os.path.isfile(clean_abstracts_filename):
+    try:
+        with codecs.open('abstracts.txt', 'r', encoding='utf8') as abstracts_file:
+            text = abstracts_file.read().strip()
+    except IOError as e:
+        print('Operation failed: %s' % e.strerror)
+else:
+    pass  # serialize the clean abstracts
 
 abstracts = [Abstract(x) for x in text.split("\r\n\r\n")]
 
-print ("Cleaning and parsing the training set movie reviews...\n")
-clean_train_reviews = []
-num_reviews = len(abstracts)
-clean_train_reviews = [x.text for x in abstracts]
+num_abstracts = len(abstracts)
+clean_abstracts = [x.text for x in abstracts]
+
+
 # stops = set(stopwords.words("english"))
 #
 # def get_tokens_list(my_text):
@@ -88,16 +67,16 @@ def remove_numeric_tokens(string):
 #                              max_features=155000)
 # analyzer = vectorizer.build_analyzer()
 #
-# review_lists = [analyzer(w) for w in clean_train_reviews]
+# abstract_vectors = [analyzer(w) for w in clean_abstracts]
 # TfidfTransformer() ->
 
 
 #
-# for i in xrange( 0, num_reviews ):
+# for i in xrange( 0, num_abstracts ):
 #     # If the index is evenly divisible by 1000, print a message
 #     if( (i+1)%1000 == 0 ):
-#         print "Review %d of %d\n" % ( i+1, num_reviews )
-#     clean_train_reviews.append( texts[i]) #review_to_words( texts[i] ))
+#         print "Review %d of %d\n" % ( i+1, num_abstracts )
+#     clean_abstracts.append( texts[i]) #review_to_words( texts[i] ))
 
 
 
@@ -106,7 +85,7 @@ def remove_numeric_tokens(string):
 # and learns the vocabulary; second, it transforms our training data
 # into feature vectors. The input to fit_transform should be a list of
 # strings.
-# train_data_features = vectorizer.fit_transform(clean_train_reviews)
+# train_data_features = vectorizer.fit_transform(clean_abstracts)
 #
 # # Numpy arrays are easy to work with, so convert the result to an
 # # array
@@ -138,6 +117,12 @@ def remove_numeric_tokens(string):
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 
+"""
+Aqui vectorizamos el texto de los articulos usando TF/IDF quitando primero los tokens que son solo numericos,
+y las stopwords en ingles.
+Selecciona casi todos los unigramas y los bigramas de dos caracteres (donde el segundo caracter puede ser -) al menos
+(en minusculas).
+"""
 vectorizer = TfidfVectorizer(analyzer="word",
                              tokenizer=None,
                              preprocessor=remove_numeric_tokens,
@@ -145,78 +130,70 @@ vectorizer = TfidfVectorizer(analyzer="word",
                              lowercase=True,
                              ngram_range=(1, 2),
                              min_df=1,
-                             max_df=1,  # quizas probar con 0.8 x ahi
+                             max_df=1.0, # se puede disminuir el umbral para ignorar terminos que aparecen en muchos docs
                              token_pattern=r"(?u)\b[\w][\w|-]+\b",
                              max_features=155000)
 analyzer = vectorizer.build_analyzer()
 
-review_lists = [analyzer(w) for w in clean_train_reviews]
+abstract_vectors = [analyzer(w) for w in clean_abstracts]
 
-tfidf_matrix = vectorizer.fit_transform(clean_train_reviews)
-terms = vectorizer.get_feature_names()
-# dictionary = corpora.Dictionary(clean_train_reviews)
-
-
-from sklearn.metrics.pairwise import cosine_similarity
-
-dist = 1 - cosine_similarity(tfidf_matrix)
+tfidf_matrix = vectorizer.fit_transform(clean_abstracts)
+terms = vectorizer.get_feature_names()  # todos los terminos (unigramas y bigramas)
+# dictionary = corpora.Dictionary(clean_abstracts)
+#
+#
+# from sklearn.metrics.pairwise import cosine_similarity
+#
+# dist = 1 - cosine_similarity(tfidf_matrix)
 
 from sklearn.cluster import KMeans
-#
-num_clusters = 3
-#
-km = KMeans(n_clusters=num_clusters)
-
-km.fit(tfidf_matrix)
-
-clusters = km.labels_.tolist()
-
 from sklearn.externals import joblib
 
-# uncomment the below to save your model
-# since I've already run my model I am loading from the pickle
+cluster_model_file = 'doc_cluster.pkl'
+num_clusters = 5  # numero predefinido de clusters hay que probar en un rango
+if not os.path.isfile(cluster_model_file):
+    km = KMeans(n_clusters=num_clusters)  # kmeans usando cosine distance, agrupa los abstracts similares
+    km.fit(tfidf_matrix)
+    # uncomment the below to save your model
+    joblib.dump(km, 'doc_cluster.pkl')
+else:
+    km = joblib.load('doc_cluster.pkl')
 
-joblib.dump(km, 'doc_cluster.pkl')
-
-km = joblib.load('doc_cluster.pkl')
 clusters = km.labels_.tolist()
 
 import pandas as pd
 
-films = {'title': [x.title for x in abstracts], 'cluster': clusters}
+article_titles = {'title': [x.title for x in abstracts], 'cluster': clusters}
 
-frame = pd.DataFrame(films, index=[clusters], columns=['title', 'cluster'])
+frame = pd.DataFrame(article_titles, index=[clusters], columns=['title', 'cluster'])
 
-print (frame['cluster'].value_counts())
-
-
+print(frame['cluster'].value_counts())
 
 print("Top terms per cluster:")
-#sort cluster centers by proximity to centroid
+# sort cluster centers by proximity to centroid (usando cosine distance)
 order_centroids = km.cluster_centers_.argsort()[:, ::-1]
 
 for i in range(num_clusters):
-    print ("Cluster %d words:" % i)
+    print("Cluster %d words:" % i)
+    for ind in order_centroids[i, :5]:  # replace 5 with n words per cluster
+        print(' %s' % terms[ind].encode('utf-8', 'ignore'))  # las 5 palabras mas representativas de cada cluster
 
-    for ind in order_centroids[i, :6]: #replace 6 with n words per cluster
-        print( ' %s' % terms[ind].encode('utf-8', 'ignore'))
-
-    #
-    # print( "Cluster %d titles:" % i)
-    # for title in frame.ix[i]['title'].values.tolist()[:5]:
-    #     print (' %s,' % title)
+        #
+        # print( "Cluster %d titles:" % i)
+        # for title in frame.ix[i]['title'].values.tolist()[:5]:
+        #     print (' %s,' % title)
 
 
 
 
 # create a Gensim dictionary from the texts
-dictionary = corpora.Dictionary(review_lists)
+dictionary = corpora.Dictionary(abstract_vectors)
 
 # remove extremes (similar to the min/max df step used when creating the tf-idf matrix)
 dictionary.filter_extremes(no_below=1, no_above=0.8)
 #
 # #convert the dictionary to a bag of words corpus for reference
-corpus = [dictionary.doc2bow(review) for review in review_lists]
+corpus = [dictionary.doc2bow(review) for review in abstract_vectors]
 corpora.MmCorpus.serialize('/tmp/deerwester.mm', corpus)
 
 corpus = corpora.MmCorpus('/tmp/deerwester.mm')
@@ -293,10 +270,10 @@ show_topics(lsi=lsi)
 
 print("lda")
 lda = LdaModel(corpus, num_topics=3,
-                            id2word=dictionary,
-                            update_every=5,
-                            chunksize=10000,
-                            passes=100)
+               id2word=dictionary,
+               update_every=5,
+               chunksize=10000,
+               passes=100)
 lda.save('/tmp/model.lda')
 
 lda = LdaModel.load('/tmp/model.lda')

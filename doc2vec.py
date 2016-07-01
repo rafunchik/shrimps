@@ -46,7 +46,7 @@ if not os.path.isfile(docs_filename):
     abstracts = [Abstract(x) for x in text.split("\r\n\r\n")]
     for article in abstracts:
         sentences_keywords.append([normalize_text(remove_numeric_tokens(x)).strip() for x in article.keywords])
-    # with open(docs_filename, 'w', encoding='utf8') as f:
+    # with open(clean_abstracts_filename, 'w', encoding='utf8') as f:
     #     for idx, line in enumerate([normalize_text(remove_numeric_tokens(x.text)) for x in abstracts]):
     #         f.write(line + '\n')
     #         # num_line = "_*{0} {1}\n".format(idx, line)
