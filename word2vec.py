@@ -1,4 +1,6 @@
 # coding=utf-8
+import codecs
+import re
 from abstract import Abstract
 
 __author__ = 'rcastro'
@@ -13,56 +15,36 @@ import numpy as np
 #model = Word2Vec.load_word2vec_format("/Users/rcastro/nltk_data/word2vec_models/GoogleNews-vectors-negative300.bin", binary=True)
 #print(model.most_similar('Crayfish', topn=5))
 
-
-
-
-# Initialize an empty list to hold the clean reviews
-clean_train_reviews = []
-#train["reviews"]
-
-def review_to_wordlist( review, remove_stopwords=True ):
-    # Function to convert a document to a sequence of words,
-    # optionally removing stop words.  Returns a list of words.
-    #
-
-    #
-    # 2. Remove non-letters
-    # review_text = re.sub("[^a-zA-Z]"," ", review_text)
-    #
-    # 3. Convert words to lower case and split them
-    words = review.lower().split()
-    #
-    # 4. Optionally remove stop words (false by default)
-    if remove_stopwords:
-        stops = set(stopwords.words("english"))
-        words = [w for w in words if not w in stops]
-    #
-    # 5. Return a list of words
-    return(words)
-
-
-print "get the abstracts"
+print ("get the abstracts")
 text = ''
 try:
-  with open('/Users/rcastro/dev/abstracts.txt', 'r', encoding='utf8') as abstracts_file:
-    text = abstracts_file.read().strip()
+    with codecs.open('/Users/rcastro/dev/abstracts.txt', 'r', encoding='utf8') as abstracts_file:
+        text = abstracts_file.read().strip()
 except IOError as e:
-  print 'Operation failed: %s' % e.strerror
+    print ('Operation failed: %s' % e.strerror)
 
 abstracts = [Abstract(x) for x in text.split("\r\n\r\n")]
-
-
-
-
-print "Cleaning and parsing the training set movie reviews...\n"
 num_reviews = len(abstracts)
 clean_train_reviews = [x.text for x in abstracts]
-#
-# for i in xrange( 0, num_reviews ):
-#     # If the index is evenly divisible by 1000, print a message
-#     if( (i+1)%1000 == 0 ):
-#         print "Review %d of %d\n" % ( i+1, num_reviews )
-#     clean_train_reviews.append( texts[i]) #review_to_words( texts[i] ))
+
+def remove_numeric_tokens(string):
+    return re.sub(r'\d+[^\w|-]+', ' ', string)
+
+vectorizer = TfidfVectorizer(analyzer="word",
+                             tokenizer=None,
+                             preprocessor=remove_numeric_tokens,
+                             stop_words='english',
+                             lowercase=True,
+                             ngram_range=(1, 2),
+                             min_df=1,
+                             max_df=1,  # quizas probar con 0.8 x ahi
+                             token_pattern=r"(?u)\b[\w][\w|-]+\b",
+                             max_features=155000)
+analyzer = vectorizer.build_analyzer()
+
+review_lists = [analyzer(w) for w in clean_train_reviews]
+
+
 
 # Download the punkt tokenizer for sentence splitting
 import nltk.data
@@ -84,8 +66,7 @@ def review_to_sentences( review, tokenizer, remove_stopwords=True ):
         # If a sentence is empty, skip it
         if len(raw_sentence) > 0:
             # Otherwise, call review_to_wordlist to get a list of words
-            sentences.append( review_to_wordlist( raw_sentence, \
-              remove_stopwords ))
+            sentences.append( )
     #
     # Return the list of sentences (each sentence is a list of words,
     # so this returns a list of lists
@@ -101,8 +82,8 @@ for review in clean_train_reviews:
 # Import the built-in logging module and configure it so that Word2Vec
 # creates nice output messages
 import logging
-logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',\
-    level=logging.INFO)
+logging.basicConfig(format='%(asctime)s : %(levelname)s : %(message)s',
+                    level=logging.INFO)
 
 # Set values for various parameters
 num_features = 400    # Word vector dimensionality
@@ -118,9 +99,9 @@ print "Training model..."
 # bigram_transformer = gensim.models.Phrases(sentences)
 # >>> model = Word2Vec(bigram_transformer[sentences], size=100, ...)
 
-model = word2vec.Word2Vec(sentences, workers=num_workers, \
-            size=num_features, min_count = min_word_count, \
-            window = context, sample = downsampling, batch_words = 1000)
+model = word2vec.Word2Vec(sentences, workers=num_workers,
+                          size=num_features, min_count = min_word_count,
+                          window = context, sample = downsampling, batch_words = 1000)
 
 # If you don't plan to train the model any further, calling
 # init_sims will make the model much more memory-efficient.
