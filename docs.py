@@ -9,13 +9,7 @@ import numpy
 
 __author__ = 'rcastro'
 
-from gensim.models import Word2Vec, LdaModel, LsiModel, HdpModel
-from sklearn.feature_extraction.text import CountVectorizer
-
-import nltk
-# nltk.download()  # Download text data sets, including stop words
-from nltk.corpus import stopwords  # Import the stop word list
-import numpy as np
+from gensim.models import LdaModel, LsiModel, HdpModel
 
 # model = Word2Vec.load_word2vec_format("/Users/rcastro/nltk_data/word2vec_models/GoogleNews-vectors-negative300.bin", binary=True)
 # print(model.most_similar('Crayfish', topn=5))
@@ -173,8 +167,8 @@ order_centroids = km.cluster_centers_.argsort()[:, ::-1]
 
 for i in range(num_clusters):
     print("Cluster %d words:" % i)
-    for ind in order_centroids[i, :5]:  # replace 5 with n words per cluster
-        print(' %s' % terms[ind].encode('utf-8', 'ignore'))  # las 5 palabras mas representativas de cada cluster
+    for ind in order_centroids[i, :7]:  # replace 5 with n words per cluster
+        print(' %s' % terms[ind].encode('utf-8', 'ignore'))  # las 7 palabras mas representativas de cada cluster
 
         #
         # print( "Cluster %d titles:" % i)
@@ -190,31 +184,41 @@ dictionary = corpora.Dictionary(abstract_vectors)
 # remove extremes (similar to the min/max df step used when creating the tf-idf matrix)
 dictionary.filter_extremes(no_below=1, no_above=0.8)  # filtra los terminos mas comunes
 #
-# #convert the dictionary to a bag of words corpus for reference
-corpus = [dictionary.doc2bow(review) for review in abstract_vectors]
-corpora.MmCorpus.serialize('/tmp/deerwester.mm', corpus)
 
-corpus = corpora.MmCorpus('/tmp/deerwester.mm')
+corpus_filename = 'deerwester.mm'
+if not os.path.isfile(corpus_filename):
+    # convert the dictionary to a bag of words corpus for reference
+    corpus = [dictionary.doc2bow(review) for review in abstract_vectors]
+    corpora.MmCorpus.serialize(corpus_filename, corpus)
+else:
+    corpus = corpora.MmCorpus(corpus_filename)
+
+
+
+#  vamos a utilizar Latent semantic indexing para tratar categorizar los abstracts
 
 print("lsi")
-lsi = LsiModel(corpus, id2word=dictionary, num_topics=5)  # initialize an LSI transformation
-#
-lsi.save('/tmp/model.lsi')  # same for tfidf, lda, ...
-lsi = LsiModel.load('/tmp/model.lsi')
+lsi_filename = 'model.lsi'
+if not os.path.isfile(lsi_filename):
+    lsi = LsiModel(corpus, id2word=dictionary, num_topics=5)  # initialize an LSI transformation, 5 topicos
+    #
+    lsi.save(lsi_filename)  # same for tfidf, lda, ...
+else:
+    lsi = LsiModel.load(lsi_filename)
 
-
-def print_topic(lsi, topicno, topn=10):
+lsi_topics = 5  # numero predefinido de topicos
+def print_topic(lsi, topicno, topn=7):
     """
         Return a single topic as a formatted string. See `show_topic()` for parameters.
 
-        >>> lsimodel.print_topic(10, topn=5)
+        >>> lsimodel.print_topic(topicno, topn)
         '-0.340 * "category" + 0.298 * "$M$" + 0.183 * "algebra" + -0.174 * "functor" + -0.168 * "operator"'
 
         """
     return ' + '.join(['%.3f*"%s"' % (v, k) for k, v in show_topic(lsi, topicno, topn)])
 
 
-def show_topic(lsi, topicno, topn=10):
+def show_topic(lsi, topicno, topn=7):
     """
         Return a specified topic (=left singular vector), 0 <= `topicno` < `self.num_topics`,
         as a string.
@@ -222,7 +226,7 @@ def show_topic(lsi, topicno, topn=10):
         Return only the `topn` words which contribute the most to the direction
         of the topic (both negative and positive).
 
-        >>> lsimodel.show_topic(10, topn=5)
+        >>> lsimodel.show_topic(topicno, topn)
         [("category", -0.340), ("$M$", 0.298), ("algebra", 0.183), ("functor", -0.174), ("operator", -0.168)]
 
         """
@@ -237,10 +241,10 @@ def show_topic(lsi, topicno, topn=10):
     return [(lsi.id2word[val], 1.0 * c[val] / norm) for val in most]
 
 
-def show_topics(num_topics=3, num_words=10, log=True, formatted=True, lsi=None):
+def show_topics(num_topics=lsi_topics, num_words=7, log=True, formatted=True, lsi=None):
     """
         Return `num_topics` most significant topics (return all by default).
-        For each topic, show `num_words` most significant words (10 words by default).
+        For each topic, show `num_words` most significant words (7 words by default).
 
         The topics are returned as a list -- a list of strings if `formatted` is
         True, or a list of `(word, probability)` 2-tuples if False.
@@ -261,22 +265,28 @@ def show_topics(num_topics=3, num_words=10, log=True, formatted=True, lsi=None):
     return shown
 
 
-show_topics(lsi=lsi)
+show_topics(lsi=lsi)  # imprime los topicos (categorias)
 
 
-# try with BoW vectors too
+# try with BoW vectors too?
 
+
+
+#  vamos a utilizar Latent Dirichlet Allocation para tratar de categorizar los abstracts
+# este se demora la primera q lo corres para entrenar el modelo
 print("lda")
-lda = LdaModel(corpus, num_topics=3,
-               id2word=dictionary,
-               update_every=5,
-               chunksize=10000,
-               passes=100)
-lda.save('/tmp/model.lda')
-
-lda = LdaModel.load('/tmp/model.lda')
+lda_filename = 'model.lda'
+if not os.path.isfile(lda_filename):
+    lda = LdaModel(corpus, num_topics=5,
+                   id2word=dictionary,
+                   update_every=5,
+                   chunksize=10000,
+                   passes=100)
+    lda.save('/tmp/model.lda')
+else:
+    lda = LdaModel.load('/tmp/model.lda')
 lda.show_topics()
-topics_matrix = lda.show_topics(formatted=False, num_words=20)
+topics_matrix = lda.show_topics(formatted=False, num_words=7)
 
 print(topics_matrix)
 print(len(topics_matrix))
@@ -292,6 +302,9 @@ for topic in topics_matrix:
 #     print([str(word) for word in i])
 
 
+# otro modelo mas para categorizar documentos, Hierarchical Dirichlet Process
 print("HDP")
 model = HdpModel(corpus, id2word=dictionary)
-model.show_topics(log=True, topics=3)
+model.show_topics(log=True, topics=5)
+
+#  ver https://radimrehurek.com/gensim/tut2.html

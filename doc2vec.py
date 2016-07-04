@@ -32,29 +32,30 @@ def normalize_text(text):
 
 
 sentences_keywords = []
-docs_filename = '/Users/rcastro/dev/alldata-id.txt6'
+docs_filename = 'abstracts_preprocesados.txt'
 if not os.path.isfile(docs_filename):
     print "get the abstracts"
     text = ''
     try:
-        with open('/Users/rcastro/dev/abstracts.txt', 'r', encoding='utf8') as abstracts_file:
+        with open('abstracts.txt', 'r', encoding='utf8') as abstracts_file:
             text = abstracts_file.read().strip()
-
     except IOError as e:
-        print 'Operation failed: %s' % e.strerror
+        print 'no pudo leer los abstracts: %s' % e.strerror
 
     abstracts = [Abstract(x) for x in text.split("\r\n\r\n")]
     for article in abstracts:
         sentences_keywords.append([normalize_text(remove_numeric_tokens(x)).strip() for x in article.keywords])
-    # with open(clean_abstracts_filename, 'w', encoding='utf8') as f:
-    #     for idx, line in enumerate([normalize_text(remove_numeric_tokens(x.text)) for x in abstracts]):
-    #         f.write(line + '\n')
+    with open(docs_filename, 'w', encoding='utf8') as f:
+        for idx, line in enumerate([normalize_text(remove_numeric_tokens(x.text)) for x in abstracts]):
+            f.write(line + '\n')
     #         # num_line = "_*{0} {1}\n".format(idx, line)
     #         # f.write(line+'\n')
 
-sentences = TaggedLineDocument('/Users/rcastro/dev/alldata-id.txt')
+sentences = TaggedLineDocument('abstracts_preprocesados.txt')
 # sentences = sentences_keywords
 
+
+# Vamos a utilizar Doc2vec, ver http://rare-technologies.com/doc2vec-tutorial/
 
 from gensim.models import Doc2Vec
 import gensim.models.doc2vec
@@ -66,13 +67,13 @@ assert gensim.models.doc2vec.FAST_VERSION > -1, "this will be painfully slow oth
 
 # Set values for various parameters
 num_features = 400    # Word vector dimensionality
-min_word_count = 1   # Minimum word count
-num_workers = 4       # Number of threads to run in parallel
-context = 20          # Context window size
-downsampling = 1e-3   # Downsample setting for frequent words
+# min_word_count = 1   # Minimum word count
+# context = 20          # Context window size
+# downsampling = 1e-3   # Downsample setting for frequent words
 
+# 3 modelos diferentes con veectores de 50 variables
 simple_models = [
-    # PV-DM w/concatenation - window=5 (both sides) approximates paper's 10-word total window size
+    # PV-DM w/concatenation - window=10 (both sides) approximates paper's 10-word total window size
     Doc2Vec(dm=1, dm_concat=1, size=50, window=10, negative=10, hs=0, min_count=2, workers=cores),
     # PV-DBOW
     Doc2Vec(dm=0, size=50, negative=5, hs=0, min_count=2, workers=cores),
@@ -80,15 +81,14 @@ simple_models = [
     Doc2Vec(dm=1, dm_mean=1, size=50, window=10, negative=5, hs=0, min_count=2, workers=cores),
 ]
 
-
-
+# 3 modelos diferentes con veectores de 400 variables
 simple_models_400 = [
     # PV-DM w/concatenation - window=5 (both sides) approximates paper's 10-word total window size
-    Doc2Vec(dm=1, dm_concat=1, size=400, window=10, negative=10, hs=0, min_count=2, workers=cores),
+    Doc2Vec(dm=1, dm_concat=1, size=num_features, window=10, negative=10, hs=0, min_count=2, workers=cores),
     # PV-DBOW
-    Doc2Vec(dm=0, size=400, negative=5, hs=0, min_count=2, workers=cores),
+    Doc2Vec(dm=0, size=num_features, negative=5, hs=0, min_count=2, workers=cores),
     # PV-DM w/average
-    Doc2Vec(dm=1, dm_mean=1, size=400, window=10, negative=5, hs=0, min_count=2, workers=cores),
+    Doc2Vec(dm=1, dm_mean=1, size=num_features, window=10, negative=5, hs=0, min_count=2, workers=cores),
 ]
 
 # speed setup by sharing results of 1st model's vocabulary scan
@@ -98,9 +98,6 @@ for model in simple_models[1:]:
     model.reset_from(simple_models[0])
     print(model)
 
-# for model in simple_models_100:
-#     model.reset_from(simple_models[0])
-#     print(model)
 
 for model in simple_models_400:
     model.reset_from(simple_models[0])
@@ -143,7 +140,7 @@ for epoch in range(passes):
     shuffle(all_docs)  # shuffling gets best results
 
 # doc_id = np.random.randint(len(sentences))    #
-doc_id = np.random.randint(simple_models[0].docvecs.count)  # pick random doc, re-run cell for more examples
+doc_id = np.random.randint(simple_models[0].docvecs.count)  # pick random doc, (escoge un abstract aleatorio y busca los mas simijantes)
 
 for name, model in models_by_name.items()[:3]:
     with elapsed_timer() as elapsed:
@@ -151,12 +148,12 @@ for name, model in models_by_name.items()[:3]:
         # duration = '%.1f' % elapsed()
         # print (name, duration)
         sims = model.docvecs.most_similar(doc_id, topn=model.docvecs.count)  # get *all* similar documents
-        print(u'SIMILAR/DISSIMILAR DOCS PER MODEL %s:\n' % model)
-        print(u'TARGET : «%s»\n' % (' '.join(all_docs[doc_id].words)))
-        print(u'TARGET keywords: «%s»\n' % (' '.join(sentences_keywords[doc_id])))
+        print(u'ABSTRACTS mas similares por modelo %s:\n' % model)
+        print(u'abstract escogido: «%s»\n' % (' '.join(all_docs[doc_id].words)))
+        print(u'y sus keywords: «%s»\n' % (' '.join(sentences_keywords[doc_id])))
         for label, index in [('MOST', 0)]: #, ('MEDIAN', len(sims)//2), ('LEAST', len(sims) - 1)]:
             print(u'%s %s: «%s»\n' % (label, sims[index][1], ' '.join(all_docs[sims[index][0]].words)))
-            print(u'Similar keywords : «%s»\n' % (' '.join(sentences_keywords[sims[index][0]])))
+            print(u'Keywords de los docs similares: «%s»\n' % (' '.join(sentences_keywords[sims[index][0]])))
 
 
 word_models = all_models[:3]
@@ -165,6 +162,7 @@ word_models = all_models[:3]
 #     if word_models[0].vocab[word].count > 10 and len(word)>3:
 #         break
 
+# aqui puedes sustituir por una palabra, y ver que palabras similares te salen de acuerdo a los modelos...
 word = "aquaculture" #diadromous
 similars_per_model = [str(model.most_similar(word, topn=5)).replace('), ','),<br>\n') for model in word_models]
 similar_table = ("<table><tr><th>" +
