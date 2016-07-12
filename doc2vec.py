@@ -1,7 +1,6 @@
 # coding=utf-8
 import os
 import re
-import html2text as html2text
 import numpy as np
 from abstract import Abstract
 
